@@ -29,28 +29,89 @@ gsheet_helper = GoogleSheetHelper(GOOGLE_SHEET_CREDENTIALS, SPREADSHEET_ID)
 async def index():
     return "it works!"
 
+@app.post("/create")
+async def create_record(data: DataSchema, db: AsyncSession = Depends(get_db_session)):
+    try:
+        # Check if the record already exists in the database
+        query = select(DataModel).filter_by(field_1=data.field_1)
+        result = await db.execute(query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            raise HTTPException(status_code=400, detail="Record already exists")
+
+        # Create a new record
+        new_data = DataModel(field_1=data.field_1, field_2=data.field_2)
+        db.add(new_data)
+        await db.commit()
+        return {"message": "Record created successfully"}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating record: {str(e)}")
+
+@app.get("/read")
+async def read_records(db: AsyncSession = Depends(get_db_session)):
+    try:
+        result = await db.execute(select(DataModel))
+        records = result.scalars().all()
+        return records
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading records: {str(e)}")
+
+
+@app.put("/update/{field_1}")
+async def update_record(field_1: str, data: DataSchema, db: AsyncSession = Depends(get_db_session)):
+    try:
+        query = select(DataModel).filter_by(field_1=field_1)
+        result = await db.execute(query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            existing.field_2 = data.field_2
+            db.add(existing)
+            await db.commit()
+            return {"message": f"Record {field_1} updated successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Record not found")
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating record: {str(e)}")
+
+@app.delete("/delete/{field_1}")
+async def delete_record(field_1: str, db: AsyncSession = Depends(get_db_session)):
+    try:
+        query = select(DataModel).filter_by(field_1=field_1)
+        result = await db.execute(query)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            await db.delete(existing)
+            await db.commit()
+            return {"message": f"Record {field_1} deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Record not found")
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting record: {str(e)}")
+
+
 @app.get("/sync/google-to-db")
 async def sync_google_to_db(db: AsyncSession = Depends(get_db_session)):
     try:
-        # Fetch all records from Google Sheets
         records = gsheet_helper.get_all_records()
 
         if not records:
             return {"message": "No data found in Google Sheets to sync"}
 
         for record in records:
-            # Check if the record already exists in the database
             query = select(DataModel).filter_by(field_1=record["field_1"])
             result = await db.execute(query)
             existing = result.scalar_one_or_none()
 
-            # Insert or update the record in the database
             if existing:
-                # Update the record if it exists
                 existing.field_2 = record["field_2"]
                 db.add(existing)
             else:
-                # Insert the new record
                 new_data = DataModel(field_1=record["field_1"], field_2=record["field_2"])
                 db.add(new_data)
 
@@ -65,14 +126,14 @@ async def sync_google_to_db(db: AsyncSession = Depends(get_db_session)):
 @app.get("/sync/db-to-google")
 async def sync_db_to_google(db: AsyncSession = Depends(get_db_session)):
     try:
-        # Fetch all records from the database
         result = await db.execute(select(DataModel))
         db_records = result.scalars().all()
 
         if not db_records:
             return {"message": "No data found in the database to sync"}
 
-        # Sync each database record to Google Sheets
+        gsheet_helper.clear_sheet()
+
         for record in db_records:
             gsheet_helper.insert_row([record.field_1, record.field_2])
 
