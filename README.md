@@ -60,7 +60,7 @@ All the best ✨.
 
 ## Developer's Section
 ### Features
-- Real-Time Sync: Automatically detects changes in Google Sheets - and PostgreSQL.
+- Real-Time Sync: Automatically detects changes in Google Sheets and PostgreSQL every 10 seconds and changes respectively.
 - Bidirectional Synchronization: Updates data in both directions.
 - CRUD Operations: Create, Read, Update, and Delete data on both Google Sheets and PostgreSQL.
 - FastAPI API: Exposes a RESTful API for interacting with the system.
