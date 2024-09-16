@@ -46,7 +46,7 @@ Once you're done, make sure you **record a video** showing your project working.
 We have a checklist at the bottom of this README file, which you should update as your progress with your assignment. It will help us evaluate your project.
 
 - [Y] My code's working just fine! 🥳
-- [ ] I have recorded a video showing it working and embedded it in the README ▶️
+- [Y] I have recorded a video showing it working and embedded it in the README ▶️
 - [Y] I have tested all the normal working cases 😎
 - [ ] I have even solved some edge cases (brownie points) 💪
 - [Y] I added my very planned-out approach to the problem at the end of this README 📜
@@ -76,4 +76,4 @@ All the best ✨.
 
 
 *Add your video here, and your approach to the problem (optional). Leave some comments for us here if you want, we will be reading this :)*
-https://www.loom.com/share/2c42c1beb148475290737c66a0f197d3?sid=1efe8556-8ca3-4410-9746-d6f8e7c5ea3c
+https://drive.google.com/file/d/1zgVX6bRZkcroA8AwplY0jkk4RklM3RgJ/view?usp=sharing
