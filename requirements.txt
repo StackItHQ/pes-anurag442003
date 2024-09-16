@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+google-api-python-client
+gspread
+oauth2client
+asyncpg
+sqlalchemy
+psycopg2
+pydantic
+google-auth
+pytest
+python-dotenv
