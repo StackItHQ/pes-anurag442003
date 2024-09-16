@@ -29,4 +29,13 @@ class GoogleSheetHelper:
         self.sheet.delete_row(index)
 
     def clear_sheet(self):
-        self.sheet.clear()
+        """Clear the sheet but keep the header intact."""
+        all_values = self.sheet.get_all_values()
+        if len(all_values) > 1:
+            self.sheet.delete_rows(2, len(all_values))
+
+    def create_header(self, headers):
+        """Ensure that the header is present at the top of the sheet."""
+        current_header = self.sheet.row_values(1)
+        if current_header != headers:
+            self.sheet.insert_row(headers, 1)
