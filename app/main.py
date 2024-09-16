@@ -117,11 +117,9 @@ async def sync_data():
 @app.post("/data")
 async def create_data(item: DataItem, background_tasks: BackgroundTasks):
     try:
-        # Get the last row number
         last_row = db.read('data_table')
         new_id = len(last_row) + 1 if last_row else 1
         
-        # Create new item with the calculated ID
         new_data = item.dict(exclude_unset=True)
         new_data['id'] = new_id
         db.create('data_table', new_data)
