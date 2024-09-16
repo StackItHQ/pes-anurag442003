@@ -1,168 +1,134 @@
-from fastapi import FastAPI, Depends, HTTPException
-from app.utils.gsheet_helper import GoogleSheetHelper
-from app.utils.db_helper import get_db_session, DataModel, init_db
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-from typing import List
-import logging
-from sqlalchemy import func
-
-logging.basicConfig(level=logging.INFO)
+from typing import List, Optional
+from app.database import DatabaseManager
+from app.sheets_sync import read_sheet, write_sheet, get_sheet_structure
+import asyncio
+from datetime import datetime, timedelta
 
 app = FastAPI()
 
-@app.on_event("startup")
-async def on_startup():
-    await init_db()
 
-class DataSchema(BaseModel):
-    field_1: str
-    field_2: str
+db = DatabaseManager(dbname='anurag_db', user='postgres', password='abb442003', host='localhost', port='5432')
 
-GOOGLE_SHEET_CREDENTIALS = "C:/Users/anura/OneDrive/Desktop/GenAI/superjoin/anuragccproject-87dbca3b1d42.json"
-SPREADSHEET_ID = "1SdPrz1PTzyl-GcnaSlx9iOFml2UeUGVDWNuq41vnSfs"
-gsheet_helper = GoogleSheetHelper(GOOGLE_SHEET_CREDENTIALS, SPREADSHEET_ID)
+SHEET_ID = '12NMmCimnsY7hzB7fBWgRHqCxbINAaAvG8Tgnsf262Uk' 
+RANGE_NAME = 'Sheet1!A:Z'  
+SYNC_INTERVAL = 10  
+class DataItem(BaseModel):
+    id: Optional[int]
+data_item_fields = {}
+
+def create_table_from_sheet_structure():
+    global data_item_fields
+    sheet_structure = get_sheet_structure(SHEET_ID)
+    if not sheet_structure:
+        raise Exception("Failed to get sheet structure")
+
+    first_sheet_name = list(sheet_structure.keys())[0]
+    column_count = sheet_structure[first_sheet_name]
+
+
+    default_headers = ['id', 'first_name', 'last_name', 'email', 'department', 'hire_date']
+
+    first_row = read_sheet(SHEET_ID, f'{first_sheet_name}!A1:{chr(65+len(default_headers)-1)}1')
+    if not first_row or not first_row[0]:
+
+        write_sheet(SHEET_ID, f'{first_sheet_name}!A1:{chr(65+len(default_headers)-1)}1', [default_headers])
+        column_names = default_headers
+    else:
+        column_names = first_row[0]
+
+
+    create_table_query = f"""
+    CREATE TABLE IF NOT EXISTS data_table (
+        id SERIAL PRIMARY KEY,
+        {', '.join(f'"{col}" TEXT' for col in column_names if col.lower() != 'id')},
+        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+    db.cur.execute(create_table_query)
+    db.conn.commit()
+
+    print(f"Created table with columns: {', '.join(column_names)}")
+
+
+    for col in column_names:
+        if col.lower() != 'id':
+            data_item_fields[col] = (str, ...)
+    DataItem.update_forward_refs()
 
 @app.get("/")
 async def index():
-    return "it works!"
+    return "WElcome!!"
 
-@app.post("/create")
-async def create_record(data: DataSchema, db: AsyncSession = Depends(get_db_session)):
-    try:
-        query = select(DataModel).filter_by(field_1=data.field_1)
-        result = await db.execute(query)
-        existing = result.scalar_one_or_none()
+@app.on_event("startup")
+async def startup_event():
+    create_table_from_sheet_structure()
 
-        if existing:
-            raise HTTPException(status_code=400, detail="Record already exists")
+    asyncio.create_task(periodic_sync())
 
-        new_data = DataModel(field_1=data.field_1, field_2=data.field_2)
-        db.add(new_data)
-        await db.commit()
-        return {"message": "Record created successfully"}
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error creating record: {str(e)}")
+async def periodic_sync():
+    while True:
+        await sync_data()
+        await asyncio.sleep(SYNC_INTERVAL)
 
-@app.get("/read")
-async def read_records(db: AsyncSession = Depends(get_db_session)):
-    try:
-        result = await db.execute(select(DataModel))
-        records = result.scalars().all()
-        return records
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading records: {str(e)}")
+async def sync_data():
 
-@app.put("/update/{field_1}")
-async def update_record(field_1: str, data: DataSchema, db: AsyncSession = Depends(get_db_session)):
-    try:
-        query = select(DataModel).filter_by(field_1=field_1)
-        result = await db.execute(query)
-        existing = result.scalar_one_or_none()
+    last_sync = db.get_last_sync_time()
 
-        if existing:
-            existing.field_2 = data.field_2
-            db.add(existing)
-            await db.commit()
-            return {"message": f"Record {field_1} updated successfully"}
-        else:
-            raise HTTPException(status_code=404, detail="Record not found")
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error updating record: {str(e)}")
 
-@app.delete("/delete/{field_1}")
-async def delete_record(field_1: str, db: AsyncSession = Depends(get_db_session)):
-    try:
-        query = select(DataModel).filter_by(field_1=field_1)
-        result = await db.execute(query)
-        existing = result.scalar_one_or_none()
-
-        if existing:
-            await db.delete(existing)
-            await db.commit()
-            return {"message": f"Record {field_1} deleted successfully"}
-        else:
-            raise HTTPException(status_code=404, detail="Record not found")
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error deleting record: {str(e)}")
+    sheet_data = read_sheet(SHEET_ID, RANGE_NAME)
+    if sheet_data:
+        headers = sheet_data[0]
+        for row in sheet_data[1:]:
+            data = dict(zip(headers, row))
     
-
-@app.get("/sync/google-to-db")
-async def sync_google_to_db(db: AsyncSession = Depends(get_db_session)):
-    try:
-        records = await gsheet_helper.get_all_records()
-
-        if not records:
-            return {"message": "No data found in Google Sheets to sync"}
-
-        for record in records:
-            query = select(DataModel).filter_by(field_1=record["field_1"])
-            result = await db.execute(query)
-            existing = result.scalar_one_or_none()
-
-            # Sync Prevention: Check last_synced timestamps to prevent circular sync
-            if existing:
-                if record.get("last_synced") and existing.last_synced and record["last_synced"] <= existing.last_synced:
-                    continue  # Skip if already synced
-
-                # Update existing record
-                existing.field_2 = record["field_2"]
-                existing.last_synced = func.now()  # Update the last synced timestamp
-                db.add(existing)
+            existing_row = db.read('data_table', data.get('id'))
+            if existing_row:
+              
+                if any(existing_row[key] != value for key, value in data.items() if key != 'id'):
+                    db.update('data_table', data['id'], data)
             else:
-                # Insert new record
-                new_data = DataModel(
-                    field_1=record["field_1"],
-                    field_2=record["field_2"],
-                    last_synced=func.now()
-                )
-                db.add(new_data)
+                
+                db.create('data_table', data)
 
-        await db.commit()
-        return {"message": "Google Sheets data synchronized with the database"}
 
-    except Exception as e:
-        logging.error(f"Error syncing Google Sheets to DB: {e}", exc_info=True)
-        await db.rollback(c)
-        raise HTTPException(status_code=500, detail=f"Error syncing Google Sheets to DB: {str(e)}")
+    db_data = db.read('data_table')
+    sheet_data = [headers]  
+    for row in db_data:
+        sheet_data.append([row[header] for header in headers])
+    write_sheet(SHEET_ID, RANGE_NAME, sheet_data)
 
-@app.get("/sync/db-to-google")
-async def sync_db_to_google(db: AsyncSession = Depends(get_db_session)):
-    headers = ["field_1", "field_2"]
-    gsheet_helper.create_header(headers)
-    try:
-        result = await db.execute(select(DataModel))
-        db_records = result.scalars().all()
 
-        if not db_records:
-            return {"message": "No data found in the database to sync"}
+    db.update_last_sync_time()
 
-        # Ensure header is present
-        headers = ["field_1", "field_2"]
-        gsheet_helper.create_header(headers)
+@app.post("/data")
+async def create_data(item: DataItem, background_tasks: BackgroundTasks):
+    new_id = db.create('data_table', item.dict(exclude={'id'}))
+    background_tasks.add_task(sync_data)
+    return {"id": new_id}
 
-        # Clear old data but keep the header intact
-        gsheet_helper.clear_sheet()
+@app.get("/data")
+async def read_data():
+    return db.read('data_table')
 
-        # Insert each database record starting from the second row
-        for record in db_records:
-            # Check if the data in Google Sheets is outdated
-            sheet_row = gsheet_helper.find_row_by_value("field_1", record.field_1)
-            if sheet_row:
-                # Fetch Google Sheets timestamp
-                sheet_last_synced = gsheet_helper.get_cell_value(sheet_row, "last_synced")
+@app.put("/data/{item_id}")
+async def update_data(item_id: int, item: DataItem, background_tasks: BackgroundTasks):
+    update_data = item.dict(exclude={'id'}, exclude_unset=True)
+    updated_rows = db.update('data_table', item_id, update_data)
+    if updated_rows == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    background_tasks.add_task(sync_data)
+    return {"message": "Item updated successfully"}
 
-                if sheet_last_synced and record.last_synced and sheet_last_synced >= record.last_synced:
-                    continue  # Skip if already synced
+@app.delete("/data/{item_id}")
+async def delete_data(item_id: int, background_tasks: BackgroundTasks):
+    deleted_rows = db.delete('data_table', item_id)
+    if deleted_rows == 0:
+        raise HTTPException(status_code=404, detail="Item not found")
+    background_tasks.add_task(sync_data)
+    return {"message": "Item deleted successfully"}
 
-            gsheet_helper.insert_row([record.field_1, record.field_2])
-
-        return {"message": "Database data synchronized with Google Sheets"}
-
-    except Exception as e:
-        logging.error(f"Error syncing DB to Google Sheets: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error syncing DB to Google Sheets: {str(e)}")
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
