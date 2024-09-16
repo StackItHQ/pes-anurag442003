@@ -30,7 +30,7 @@
             </tr>
             <tr>
                 <th>Email</th>
-                <td><input type="text" id="email" name="email" required></td>
+                <td><input type="email" id="email" name="email" required></td>
             </tr>
             <tr>
                 <th>Department</th>
@@ -38,7 +38,7 @@
             </tr>
             <tr>
                 <th>Hire Date</th>
-                <td><input type="text" id="hire_date" name="hire_date" required></td>
+                <td><input type="date" id="hire_date" name="hire_date" required></td>
             </tr>
         </table>
         <button type="submit">Submit</button>
@@ -62,32 +62,32 @@
 
     <script>
         const API_URL = 'http://localhost:8000';
+        const dataForm = document.getElementById('dataForm');
+        const dataTable = document.getElementById('dataTable').getElementsByTagName('tbody')[0];
 
         async function fetchData() {
-            const response = await fetch(`${API_URL}/data`);
-            const data = await response.json();
-            renderTable(data);
-        }
-
-        function renderTable(data) {
-            const tbody = document.querySelector('#dataTable tbody');
-            tbody.innerHTML = '';
-            data.forEach(item => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${item.id}</td>
-                    <td>${item.first_name}</td>
-                    <td>${item.last_name}</td>
-                    <td>${item.email}</td>
-                    <td>${item.department}</td>
-                    <td>${item.hire_date}</td>
-                    <td>
-                        <button onclick="editItem(${item.id})">Edit</button>
-                        <button onclick="deleteItem(${item.id})">Delete</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
+            try {
+                const response = await fetch(`${API_URL}/data`);
+                const data = await response.json();
+                dataTable.innerHTML = '';
+                data.forEach(item => {
+                    const row = dataTable.insertRow();
+                    row.innerHTML = `
+                        <td>${item.id}</td>
+                        <td>${item.first_name}</td>
+                        <td>${item.last_name}</td>
+                        <td>${item.email}</td>
+                        <td>${item.department}</td>
+                        <td>${item.hire_date}</td>
+                        <td>
+                            <button onclick="editItem(${item.id})">Edit</button>
+                            <button onclick="deleteItem(${item.id})">Delete</button>
+                        </td>
+                    `;
+                });
+            } catch (error) {
+                console.error('Error:', error);
+            }
         }
 
         async function submitForm(event) {
@@ -95,6 +95,8 @@
             const form = event.target;
             const formData = new FormData(form);
             const data = Object.fromEntries(formData.entries());
+            
+            if (!data.id) delete data.id;
             
             const url = data.id ? `${API_URL}/data/${data.id}` : `${API_URL}/data`;
             const method = data.id ? 'PUT' : 'POST';
@@ -109,16 +111,19 @@
                     form.reset();
                     fetchData();
                 } else {
-                    console.error('Error submitting form:', await response.text());
+                    const errorText = await response.text();
+                    console.error('Error submitting form:', errorText);
+                    alert(`Error: ${errorText}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
+                alert(`Error: ${error.message}`);
             }
         }
 
         function editItem(id) {
-            const row = document.querySelector(`#dataTable tbody tr:nth-child(${id})`);
             const form = document.getElementById('dataForm');
+            const row = Array.from(dataTable.rows).find(row => row.cells[0].textContent == id);
             form.id.value = id;
             form.first_name.value = row.cells[1].textContent;
             form.last_name.value = row.cells[2].textContent;

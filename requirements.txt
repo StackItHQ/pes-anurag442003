@@ -9,4 +9,4 @@ psycopg2
 pydantic
 google-auth
 pytest
-httpx
+python-dotenv

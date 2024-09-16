@@ -1,8 +1,12 @@
+import os
+from dotenv import load_dotenv
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extras import RealDictCursor
 import select
 import logging
+
+load_dotenv()
 
 class DatabaseManager:
     def __init__(self, dbname, user, password, host, port):
@@ -186,8 +190,14 @@ class DatabaseManager:
             raise
 
 if __name__ == '__main__':
-    db = DatabaseManager(dbname='google_sheets_sync', user='your_username', password='your_password', host='localhost', port='5432')
-    
+   if __name__ == '__main__':
+    db = DatabaseManager(
+        dbname=os.getenv('DB_NAME'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        host=os.getenv('DB_HOST'),
+        port=os.getenv('DB_PORT')
+    )
     
     new_id = db.create('data_table', {'column1': 'test1', 'column2': 'test2'})
     print(f"Created new row with id: {new_id}")

@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -8,8 +9,9 @@ from datetime import datetime, timedelta
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import os
 
-
+load_dotenv()
 app = FastAPI()
 
 app.add_middleware(
@@ -23,9 +25,15 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
 
-db = DatabaseManager(dbname='anurag_db', user='postgres', password='abb442003', host='localhost', port='5432')
+db = DatabaseManager(
+    dbname=os.getenv('DB_NAME'),
+    user=os.getenv('DB_USER'),
+    password=os.getenv('DB_PASSWORD'),
+    host=os.getenv('DB_HOST'),
+    port=os.getenv('DB_PORT')
+)
 
-SHEET_ID = '12NMmCimnsY7hzB7fBWgRHqCxbINAaAvG8Tgnsf262Uk' 
+SHEET_ID = os.getenv('SHEET_ID')
 RANGE_NAME = 'Sheet1!A:Z'  
 SYNC_INTERVAL = 10  
 

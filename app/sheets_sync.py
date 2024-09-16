@@ -1,12 +1,17 @@
+import os
+from dotenv import load_dotenv
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 import logging
 
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SERVICE_ACCOUNT_FILE = 'C:/Users/anura/OneDrive/Desktop/sj.ai/credentials.json'  
+SHEET_ID = os.getenv('SHEET_ID')
 
 def get_google_sheets_service():
     try:
@@ -55,8 +60,7 @@ def get_sheet_structure(sheet_id):
         return None
 
 if __name__ == '__main__':
-   
-    SHEET_ID = '12NMmCimnsY7hzB7fBWgRHqCxbINAaAvG8Tgnsf262Uk' 
+    SHEET_ID = os.getenv('SHEET_ID')
     RANGE_NAME = 'Sheet1!A1:C10'
 
     print(get_sheet_structure(SHEET_ID))
