@@ -1,12 +1,26 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from app.database import DatabaseManager
 from app.sheets_sync import read_sheet, write_sheet, get_sheet_structure
 import asyncio
 from datetime import datetime, timedelta
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+import logging
+
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
 
 
 db = DatabaseManager(dbname='anurag_db', user='postgres', password='abb442003', host='localhost', port='5432')
@@ -14,12 +28,16 @@ db = DatabaseManager(dbname='anurag_db', user='postgres', password='abb442003', 
 SHEET_ID = '12NMmCimnsY7hzB7fBWgRHqCxbINAaAvG8Tgnsf262Uk' 
 RANGE_NAME = 'Sheet1!A:Z'  
 SYNC_INTERVAL = 10  
+
 class DataItem(BaseModel):
-    id: Optional[int]
-data_item_fields = {}
+    id: Optional[int] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    department: Optional[str] = None
+    hire_date: Optional[str] = None
 
 def create_table_from_sheet_structure():
-    global data_item_fields
     sheet_structure = get_sheet_structure(SHEET_ID)
     if not sheet_structure:
         raise Exception("Failed to get sheet structure")
@@ -27,17 +45,14 @@ def create_table_from_sheet_structure():
     first_sheet_name = list(sheet_structure.keys())[0]
     column_count = sheet_structure[first_sheet_name]
 
-
     default_headers = ['id', 'first_name', 'last_name', 'email', 'department', 'hire_date']
 
     first_row = read_sheet(SHEET_ID, f'{first_sheet_name}!A1:{chr(65+len(default_headers)-1)}1')
     if not first_row or not first_row[0]:
-
         write_sheet(SHEET_ID, f'{first_sheet_name}!A1:{chr(65+len(default_headers)-1)}1', [default_headers])
         column_names = default_headers
     else:
         column_names = first_row[0]
-
 
     create_table_query = f"""
     CREATE TABLE IF NOT EXISTS data_table (
@@ -51,20 +66,9 @@ def create_table_from_sheet_structure():
 
     print(f"Created table with columns: {', '.join(column_names)}")
 
-
-    for col in column_names:
-        if col.lower() != 'id':
-            data_item_fields[col] = (str, ...)
-    DataItem.update_forward_refs()
-
-@app.get("/")
-async def index():
-    return "WElcome!!"
-
 @app.on_event("startup")
 async def startup_event():
     create_table_from_sheet_structure()
-
     asyncio.create_task(periodic_sync())
 
 async def periodic_sync():
@@ -104,9 +108,21 @@ async def sync_data():
 
 @app.post("/data")
 async def create_data(item: DataItem, background_tasks: BackgroundTasks):
-    new_id = db.create('data_table', item.dict(exclude={'id'}))
-    background_tasks.add_task(sync_data)
-    return {"id": new_id}
+    try:
+        # Get the last row number
+        last_row = db.read('data_table')
+        new_id = len(last_row) + 1 if last_row else 1
+        
+        # Create new item with the calculated ID
+        new_data = item.dict(exclude_unset=True)
+        new_data['id'] = new_id
+        db.create('data_table', new_data)
+        
+        background_tasks.add_task(sync_data)
+        return {"id": new_id}
+    except Exception as e:
+        logging.error(f"Error creating data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/data")
 async def read_data():
@@ -114,20 +130,34 @@ async def read_data():
 
 @app.put("/data/{item_id}")
 async def update_data(item_id: int, item: DataItem, background_tasks: BackgroundTasks):
-    update_data = item.dict(exclude={'id'}, exclude_unset=True)
-    updated_rows = db.update('data_table', item_id, update_data)
-    if updated_rows == 0:
-        raise HTTPException(status_code=404, detail="Item not found")
-    background_tasks.add_task(sync_data)
-    return {"message": "Item updated successfully"}
+    try:
+        existing_data = db.read('data_table', item_id)
+        if not existing_data:
+            raise HTTPException(status_code=404, detail="Item not found")
+        
+        update_data = item.dict(exclude_unset=True)
+        updated_id = db.update('data_table', item_id, update_data)
+        background_tasks.add_task(sync_data)
+        return {"message": f"Item {updated_id} updated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error updating data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/data/{item_id}")
 async def delete_data(item_id: int, background_tasks: BackgroundTasks):
-    deleted_rows = db.delete('data_table', item_id)
-    if deleted_rows == 0:
-        raise HTTPException(status_code=404, detail="Item not found")
-    background_tasks.add_task(sync_data)
-    return {"message": "Item deleted successfully"}
+    try:
+        deleted_id = db.delete('data_table', item_id)
+        if not deleted_id:
+            raise HTTPException(status_code=404, detail="Item not found")
+        background_tasks.add_task(sync_data)
+        return {"message": f"Item {deleted_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error deleting data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
