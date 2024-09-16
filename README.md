@@ -66,7 +66,7 @@ All the best ✨.
 - FastAPI API: Exposes a RESTful API for interacting with the system.
 
 ### Tech Stack
-- Tech Stack
+
 - Python
 - FastAPI
 - PostgreSQL
