@@ -59,4 +59,19 @@ We're available at techhiring@superjoin.ai for all queries.
 All the best ✨.
 
 ## Developer's Section
+### Features
+- Real-Time Sync: Automatically detects changes in Google Sheets - and PostgreSQL.
+- Bidirectional Synchronization: Updates data in both directions.
+- CRUD Operations: Create, Read, Update, and Delete data on both Google Sheets and PostgreSQL.
+- FastAPI API: Exposes a RESTful API for interacting with the system.
+
+### Tech Stack
+- Tech Stack
+- Python
+- FastAPI
+- PostgreSQL
+- Google Sheets API
+
+
+
 *Add your video here, and your approach to the problem (optional). Leave some comments for us here if you want, we will be reading this :)*
